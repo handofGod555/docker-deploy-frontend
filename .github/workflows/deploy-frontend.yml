@@ -1,14 +1,15 @@
 name: Deploy frontend application
 
-'on':
+on:
   push:
     branches:
-      - "*"
-      - feature/*
+      - "refs/heads/*"
+      - "refs/heads/feature/*"
   pull_request:
     branches:
-      - "*"
-      - main
+      - "refs/heads/*"
+      - "refs/heads/main"
+
 
 jobs:
   docker:
