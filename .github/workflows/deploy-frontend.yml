@@ -4,9 +4,11 @@ name: Deploy frontend application
   push:
     branches:
       - "*"
+      - feature/*
   pull_request:
     branches:
       - "*"
+      - main
 
 jobs:
   docker:
