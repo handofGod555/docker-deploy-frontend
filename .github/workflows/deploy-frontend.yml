@@ -13,7 +13,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Docker
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to DockerHub
@@ -29,24 +32,31 @@ jobs:
           push: true
           tags: |
             awesomekid/234-deploylab-frontend:latest
-            awesomekid/234-deploylab-frontend:${{ github.ref_name | replace('/', '-') }}
+            awesomekid/234-deploylab-frontend:${{ github.ref_name }}
 
-      - name: Deploy to Server
+      - name: copy compose file
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST_SERVER }}
+          username: ${{ secrets.HOST_USER_NAME }}
+          key: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+          port: 22
+          source: "docker-compose-${{ contains(github.ref, 'feature/') && 'prod' || 'default' }}.yml"
+          target: "/home/ubuntu/frontend-${{ github.ref_name }}"
+
+      - name: docker compose
         uses: appleboy/ssh-action@v1.2.1
         with:
           host: ${{ secrets.HOST_SERVER }}
           username: ${{ secrets.HOST_USER_NAME }}
           key: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+          port: 22
           script: |
-            BRANCH="${{ github.ref_name | replace('/', '-') }}"
-            COMPOSE_FILE="docker-compose-$([ "${{ github.ref }}" == refs/heads/main* ] && echo "default" || echo "prod").yml"
-            
-            # Copy compose file
-            mkdir -p "/home/ubuntu/frontend-${BRANCH}"
-            scp -o StrictHostKeyChecking=no ${COMPOSE_FILE} ${{ secrets.HOST_USER_NAME }}@${{ secrets.HOST_SERVER }}:/home/ubuntu/frontend-${BRANCH}/docker-compose.yml
-            
-            # Deploy
-            cd "/home/ubuntu/frontend-${BRANCH}"
-            docker compose -p "frontend-${BRANCH}" down
-            docker compose -p "frontend-${BRANCH}" pull
-            docker compose -p "frontend-${BRANCH}" up -d
+            SANITIZED_BRANCH="${{ github.ref_name }}"
+            DEPLOY_DIR="/home/ubuntu/frontend-${SANITIZED_BRANCH//\//-}"
+            mkdir -p ${DEPLOY_DIR}
+            cd ${DEPLOY_DIR}
+            echo ${{ secrets.DOCKER_HUB_TOKEN }} | docker login --username ${{ secrets.DOCKER_HUB_USERNAME }} --password-stdin
+            docker compose -p "frontend-${SANITIZED_BRANCH//\//-}" down
+            docker compose -p "frontend-${SANITIZED_BRANCH//\//-}" pull
+            docker compose -p "frontend-${SANITIZED_BRANCH//\//-}" up -d
