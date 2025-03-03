@@ -3,12 +3,8 @@ name: Deploy frontend application
 on:
   push:
     branches:
-      - "refs/heads/*"
-      - "refs/heads/feature/*"
-  pull_request:
-    branches:
-      - "refs/heads/*"
-      - "refs/heads/main"
+      - "main"
+      - "feature/**"
 
 jobs:
   docker:
@@ -17,10 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
+      - name: Setup Docker
         uses: docker/setup-buildx-action@v3
 
       - name: Login to DockerHub
@@ -36,32 +29,24 @@ jobs:
           push: true
           tags: |
             awesomekid/234-deploylab-frontend:latest
-            awesomekid/234-deploylab-frontend:${{ github.ref_name }}
+            awesomekid/234-deploylab-frontend:${{ github.ref_name | replace('/', '-') }}
 
-      # REPLACE THIS STEP
-      - name: copy compose file
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.HOST_SERVER }}
-          username: ${{ secrets.HOST_USER_NAME }}
-          key: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
-          port: 22
-          source: "docker-compose-${{ contains(github.ref, 'feature') && 'prod' || 'default' }}.yml"
-          target: "/home/ubuntu/frontend-${{ github.ref_name }}"
-
-      # MODIFY THIS STEP
-      - name: docker compose
+      - name: Deploy to Server
         uses: appleboy/ssh-action@v1.2.1
         with:
           host: ${{ secrets.HOST_SERVER }}
           username: ${{ secrets.HOST_USER_NAME }}
           key: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
-          port: 22
           script: |
-            DEPLOY_DIR="/home/ubuntu/frontend-${{ github.ref_name }}"
-            mkdir -p $DEPLOY_DIR
-            cd $DEPLOY_DIR
-            echo ${{ secrets.DOCKER_HUB_TOKEN }} | docker login --username ${{ secrets.DOCKER_HUB_USERNAME }} --password-stdin
-            docker compose -p frontend-${{ github.ref_name }} down
-            docker compose -p frontend-${{ github.ref_name }} pull
-            docker compose -p frontend-${{ github.ref_name }} up -d
+            BRANCH="${{ github.ref_name | replace('/', '-') }}"
+            COMPOSE_FILE="docker-compose-$([ "${{ github.ref }}" == refs/heads/main* ] && echo "default" || echo "prod").yml"
+            
+            # Copy compose file
+            mkdir -p "/home/ubuntu/frontend-${BRANCH}"
+            scp -o StrictHostKeyChecking=no ${COMPOSE_FILE} ${{ secrets.HOST_USER_NAME }}@${{ secrets.HOST_SERVER }}:/home/ubuntu/frontend-${BRANCH}/docker-compose.yml
+            
+            # Deploy
+            cd "/home/ubuntu/frontend-${BRANCH}"
+            docker compose -p "frontend-${BRANCH}" down
+            docker compose -p "frontend-${BRANCH}" pull
+            docker compose -p "frontend-${BRANCH}" up -d
